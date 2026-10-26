@@ -1,17 +1,20 @@
 package com.bcp.workshop.auth;
 
+import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 
-public final class LegacyTokenUtil {
-    private static final String SECRET = "WORKSHOP_SECRET_2026";
+@ApplicationScoped
+public class LegacyTokenUtil {
+    @ConfigProperty(name = "auth.token.secret")
+    String secret;
 
-    private LegacyTokenUtil() {}
-
-    public static String create(String username, String role) {
-        long expiry = Instant.now().plusSeconds(3600).getEpochSecond();
-        String value = username + "|" + role + "|" + expiry + "|" + SECRET;
+    public String create(String username, String role) {
+        long expiry = Instant.now().plusSeconds(AuthConstants.TOKEN_EXPIRY_SECONDS).getEpochSecond();
+        String value = username + "|" + role + "|" + expiry + "|" + secret;
         return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 }
