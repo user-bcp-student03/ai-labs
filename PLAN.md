@@ -275,10 +275,11 @@ Las aprobaciones documentadas no sustituyen resultados de pruebas.
   consumidores ni la transición de tokens existentes. La seguridad de emisión
   y verificación se probó localmente; la integración y el despliegue siguen
   pendientes.
-- **Riesgos/dependencias pendientes:** CodeQL y Dependency Review remotos no
-  se ejecutaron; tampoco se validó la integración de consumidores ni rotación
-  de claves. No se añadió `iss` o `aud` porque no formaron parte de las claims
-  aprobadas.
+- **Checks del PR #22:** `auth` y CodeQL pasaron. Dependency Review falló porque
+  el repositorio no tiene Dependency Graph habilitado; no se obtuvo un
+  resultado de advisories del paquete ([ejecución](https://github.com/user-bcp-student03/ai-labs/actions/runs/40584343315)).
+  Tampoco se validó la integración de consumidores ni rotación de claves. No
+  se añadió `iss` o `aud` porque no formaron parte de las claims aprobadas.
 - **Incidencia de ejecución:** tres invocaciones de `mvn test` desde la raíz
   fallaron por falta de `pom.xml`; se corrigió el cwd a `auth/` y las
   ejecuciones registradas arriba finalizaron correctamente. No fue un fallo

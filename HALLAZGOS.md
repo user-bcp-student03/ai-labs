@@ -75,5 +75,7 @@ registra el comportamiento observado y sus límites:
 - H-AUTH-03 permanece pendiente hasta validar los consumidores externos y
   acordar la transición de tokens previos. El despliegue no está autorizado por
   esta evidencia local.
-- La aplicabilidad de advisories de dependencias no se comprobó. CodeQL y
-  Dependency Review remotos no se ejecutaron.
+- La aplicabilidad de advisories de dependencias no se comprobó: Dependency
+  Review en el PR #22 falló porque el repositorio no tiene Dependency Graph
+  habilitado ([ejecución](https://github.com/user-bcp-student03/ai-labs/actions/runs/40584343315)).
+  CodeQL pasó en el PR.
