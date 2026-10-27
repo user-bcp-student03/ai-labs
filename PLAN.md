@@ -246,3 +246,40 @@ Las aprobaciones documentadas no sustituyen resultados de pruebas.
   caracterización previa cubría autenticación con fila plana y su migración al
   login. No se ejecutaron pruebas de arranque sin
   secreto ni pruebas en entornos externos.
+
+### Ejecución de issue — H-AUTH-03 — 2026-10-27
+
+- **Aprobaciones confirmadas por el usuario:** issue H-AUTH-03, HU-01 y
+  arquitectura/impacto.
+- **Decisiones aplicadas:** JWT HS256 con `sub`, `role`, `iat` y `exp`;
+  duración máxima de 3600 segundos; el secreto debe tener al menos 32 bytes
+  UTF-8. No se añadió aceptación de tokens legados sin firma. El despliegue
+  queda bloqueado hasta validar consumidores externos.
+- **Caracterización antes del cambio:** `mvn test`, cwd `auth/`, código 0;
+  23 pruebas aprobadas. Se reforzó la prueba funcional de login para fijar
+  `user.displayName` y la estructura externa antes de cambiar el token;
+  repetición con `mvn test`, cwd `auth/`, código 0, 23 pruebas aprobadas.
+- **Implementación:** se reemplazó `LegacyTokenUtil` por
+  `JwtTokenService`, que emite y verifica JWT HS256, valida firma y claims
+  requeridos y rechaza tokens expirados, `iat` futuro y duración mayor a la
+  permitida. `LoginService` conserva la estructura de respuesta. Se agregó
+  `nimbus-jose-jwt:10.10` para delegar el formato y la firma JWT a una
+  biblioteca JOSE, en vez de implementar criptografía/JWT manualmente.
+- **Pruebas posteriores:** `mvn test`, cwd `auth/`, código 0; 30 pruebas,
+  0 fallos/errores. `mvn verify`, cwd `auth/`, código 0; 33 pruebas,
+  0 fallos/errores y reporte JaCoCo generado.
+- **Cobertura JaCoCo por líneas:** `JwtTokenService` 42/44 (95.5%),
+  `LoginService` 23/23 (100%) y `AuthResource` 12/13 (92.3%); las clases
+  modificadas superan la meta local de 85%.
+- **Estado del hallazgo:** H-AUTH-03 no se marca Resuelto: no se comprobaron
+  consumidores ni la transición de tokens existentes. La seguridad de emisión
+  y verificación se probó localmente; la integración y el despliegue siguen
+  pendientes.
+- **Riesgos/dependencias pendientes:** CodeQL y Dependency Review remotos no
+  se ejecutaron; tampoco se validó la integración de consumidores ni rotación
+  de claves. No se añadió `iss` o `aud` porque no formaron parte de las claims
+  aprobadas.
+- **Incidencia de ejecución:** tres invocaciones de `mvn test` desde la raíz
+  fallaron por falta de `pom.xml`; se corrigió el cwd a `auth/` y las
+  ejecuciones registradas arriba finalizaron correctamente. No fue un fallo
+  del producto.

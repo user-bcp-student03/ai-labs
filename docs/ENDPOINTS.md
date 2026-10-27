@@ -15,7 +15,7 @@ Base URL local del laboratorio: `http://localhost:8080`
 #### 1. Qué hace
 
 Autentica a una persona usuaria del taller para iniciar sesión y devuelve sus
-datos de perfil junto con el token legado emitido por el backend.
+datos de perfil junto con un token JWT firmado para identificarla.
 
 #### 2. Autenticación requerida
 
@@ -50,7 +50,7 @@ Ejemplo JSON completo:
 
 | campo | tipo | descripción |
 |---|---|---|
-| `token` | string | Token Base64 generado por el backend; su estructura y límites se describen en las notas de seguridad. |
+| `token` | string | JWT compacto firmado con HS256; contiene `sub`, `role`, `iat` y `exp`. |
 | `expiresIn` | integer | Duración declarada del token, en segundos; el valor actual es `3600`. |
 | `user` | object | Perfil de la persona autenticada. |
 | `user.username` | string | Nombre de usuario. |
@@ -64,7 +64,7 @@ Ejemplo JSON completo para el perfil de test:
 
 ```json
 {
-  "token": "c3R1ZGVudHxTVFVERU5UfDE3OTMwNTUwMjV8dGVzdC1vbmx5LWF1dGgtc2VjcmV0",
+  "token": "<JWT firmado HS256 con sub, role, iat y exp>",
   "expiresIn": 3600,
   "user": {
     "username": "student",
@@ -75,9 +75,8 @@ Ejemplo JSON completo para el perfil de test:
 }
 ```
 
-El token del ejemplo se generó con el secreto ficticio del perfil de test y una
-marca de expiración de ejemplo; no es una credencial reutilizable. En una
-respuesta real el valor cambia según la hora de emisión y el secreto configurado.
+El valor de `token` es un marcador ilustrativo, no un JWT verificable. En una
+respuesta real se genera con la clave configurada y la hora de emisión actual.
 
 #### 5. Respuestas de error
 
@@ -165,17 +164,29 @@ ruta de login ni caracterizados aquí.
   migran al hash al primer login válido. Evidencia:
   `auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:89-110,132-145`
   y `auth/src/main/java/com/bcp/workshop/auth/PasswordHasher.java:10-83`.
-- **El token no está firmado.** El código codifica en Base64
-  `username|role|expiry|secret`; Base64 no brinda integridad ni autenticidad.
-  Aunque la respuesta incluye `expiresIn` y el contenido contiene una marca de
-  tiempo, este servicio no valida el token ni garantiza que los consumidores
-  apliquen la expiración. H-AUTH-03 continúa pendiente. Evidencia:
-  `auth/src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java:11-18` y
-  `HALLAZGOS.md` (H-AUTH-03).
+- El token es un JWT firmado con HS256. Sus claims son `sub` (username),
+  `role`, `iat` y `exp`; la expiración máxima es de 3600 segundos. El verificador
+  comprueba algoritmo, firma, claims requeridos, emisión no futura y expiración.
+  Evidencia: creación en
+  `auth/src/main/java/com/bcp/workshop/auth/JwtTokenService.java:39-55`,
+  verificación en `auth/src/main/java/com/bcp/workshop/auth/JwtTokenService.java:60-100`
+  y duración en `auth/src/main/java/com/bcp/workshop/auth/AuthConstants.java:4`.
+- JWT firma, pero no cifra, sus claims; no incluir datos sensibles en el token.
+- HS256 requiere que los validadores tengan acceso a la misma clave. La clave
+  debe ser aleatoria, de alta entropía y protegerse en cada consumidor; esta
+  implementación no incluye rotación de claves.
+- El código de auth no valida un header Bearer en sus endpoints actuales. No se
+  comprobó cómo los consumidores externos interpretan el formato. No desplegar
+  el cambio hasta validar esos consumidores y acordar la transición de tokens
+  previos; H-AUTH-03 permanece pendiente de ese cierre. El verificador nuevo no
+  trata tokens Base64 legados como JWT válido.
 - El secreto se lee desde configuración; producción requiere
-  `AUTH_TOKEN_SECRET`. No incluir un secreto real en el código ni en ejemplos.
-  Evidencia: `auth/src/main/resources/application.properties:9-11` y
-  `auth/src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java:11-13`.
+  `AUTH_TOKEN_SECRET` con al menos 32 bytes UTF-8 y entropía adecuada. Los
+  valores de dev/test son ficticios; no incluir un secreto real en el código ni
+  en ejemplos. Evidencia:
+  `auth/src/main/resources/application.properties:9-11` y
+  `auth/src/main/java/com/bcp/workshop/auth/JwtTokenService.java:23,31-36`
+  (validación de longitud de clave).
 - CORS permite por defecto `http://localhost:4200`; puede configurarse con
   `AUTH_CORS_ORIGINS`. Evidencia:
   `auth/src/main/resources/application.properties:4-7`.

@@ -1,9 +1,11 @@
 package com.bcp.workshop.auth;
 
 import io.quarkus.test.junit.QuarkusTest;
-import org.junit.jupiter.api.Test;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
+import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -15,19 +17,31 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @QuarkusTest
 class AuthResourceTest {
+    private static final String TEST_SECRET = "unit-test-secret-for-HS256-signing-and-verification";
+
+    @Inject
+    JwtTokenService tokenService;
+
     @Test
     void logsInWithWorkshopUser() {
-        given()
+        String token = given()
                 .contentType("application/json")
                 .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
                 .then()
                 .statusCode(200)
                 .body("user.username", is("student"))
+                .body("user.displayName", is("Workshop Student"))
                 .body("user.role", is("STUDENT"))
                 .body("token", notNullValue())
                 .body("expiresIn", is(3600))
-                .body("debug", is("authenticated-with-legacy-flow"));
+                .body("debug", is("authenticated-with-legacy-flow"))
+                .extract().path("token");
+
+        JwtTokenService.VerifiedToken claims = tokenService.verify(token);
+        assertEquals("student", claims.username());
+        assertEquals("STUDENT", claims.role());
+        assertEquals(3600, Duration.between(claims.issuedAt(), claims.expiresAt()).getSeconds());
     }
 
     @Test
@@ -110,7 +124,10 @@ class AuthResourceTest {
     @Test
     void returnsGenericServerErrorWithoutInternalDetails() {
         AuthResource resource = new AuthResource();
-        resource.loginService = new LoginService(new LegacyDatabase(), new LegacyTokenUtil()) {
+        resource.loginService = new LoginService(
+                new LegacyDatabase(),
+                new JwtTokenService(TEST_SECRET)
+        ) {
             @Override
             public LoginOutcome login(LoginRequest loginRequest) {
                 throw new IllegalStateException("simulated-database-detail");

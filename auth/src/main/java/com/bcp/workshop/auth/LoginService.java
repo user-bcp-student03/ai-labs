@@ -11,12 +11,12 @@ public class LoginService {
     private static final String PASSWORD_REQUIRED = "Password is required";
 
     private final LegacyDatabase database;
-    private final LegacyTokenUtil tokenUtil;
+    private final JwtTokenService tokenService;
 
     @Inject
-    public LoginService(LegacyDatabase database, LegacyTokenUtil tokenUtil) {
+    public LoginService(LegacyDatabase database, JwtTokenService tokenService) {
         this.database = database;
-        this.tokenUtil = tokenUtil;
+        this.tokenService = tokenService;
     }
 
     public LoginOutcome login(LoginRequest request) {
@@ -48,7 +48,7 @@ public class LoginService {
 
     private LoginResponse createResponse(UserRecord user) {
         return new LoginResponse(
-                tokenUtil.create(user.username(), user.role()),
+                tokenService.create(user.username(), user.role()),
                 AuthConstants.TOKEN_EXPIRY_SECONDS,
                 new LoginResponse.User(
                         user.username(),
