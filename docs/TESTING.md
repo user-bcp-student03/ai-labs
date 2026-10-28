@@ -9,7 +9,7 @@ convierte en una expectativa inventada.
 
 | endpoint | caso | tipo | resultado esperado |
 |---|---|---|---|
-| `POST /auth/login` | Login de `student` con contraseña válida | Camino feliz | HTTP 200; `user.username=student`, `user.role=STUDENT`, token no nulo, `expiresIn=3600`, `debug=authenticated-with-legacy-flow`. |
+| `POST /auth/login` | Login de `student` con contraseña válida | Camino feliz | HTTP 200; conserva los campos del response; el token verifica con HS256 y contiene `sub=student`, `role=STUDENT`, `iat` y `exp` con duración de 3600 segundos. |
 | `POST /auth/login` | Usuario omitido | Borde / error 400 | HTTP 400; `{"message":"Username is required"}`. |
 | `POST /auth/login` | Usuario compuesto solo por espacios | Borde / error 400 | HTTP 400; `{"message":"Username is required"}`. |
 | `POST /auth/login` | Contraseña omitida | Borde / error 400 | HTTP 400; `{"message":"Password is required"}`. |
@@ -24,6 +24,13 @@ convierte en una expectativa inventada.
 | `GET /q/health` | GET sin header `Authorization` | Borde de autenticación | HTTP 200 y `status=UP`; confirma que el endpoint de prueba no requiere dicho header. |
 | `GET /q/health` | Estado DOWN / fallo de health check | Pendiente; no hay respuesta de error definida en `ENDPOINTS.md` | No se fija código ni cuerpo. Proponer una prueba cuando auth registre una comprobación cuyo estado se pueda controlar y se acuerde el contrato de fallo. |
 | `GET /q/health` | Request de health malformado | No aplica al GET sin cuerpo/campos documentados | No se inventa una respuesta de error ni se agrega una expectativa. |
+| Verificador JWT | Payload o firma alterados | Error de validación | `JwtTokenService.verify` rechaza el token con `InvalidTokenException`. |
+| Verificador JWT | JWT expirado | Error de validación | `JwtTokenService.verify` rechaza el token expirado. |
+| Verificador JWT | Claim `role` ausente o vacío | Error de validación | Rechazo por falta de un claim obligatorio o por valor vacío. |
+| Verificador JWT | `iat` en el futuro o duración superior a 3600 segundos | Error de validación | Rechazo de emisión futura o vencimiento más largo que el límite configurado. |
+| Verificador JWT | Algoritmo distinto de HS256 | Error de validación | Rechazo; no se acepta un algoritmo alternativo. |
+| Verificador JWT | Entrada vacía o malformada | Caso borde / error | Rechazo con excepción genérica de token inválido. |
+| Configuración JWT | Clave de firma menor a 32 bytes | Caso borde / error de configuración | El servicio rechaza la clave al inicializarse. |
 
 ### Código de pruebas de endpoint
 
@@ -35,17 +42,24 @@ Rest Assured con `@QuarkusTest`.
 ```java
 @Test
 void logsInWithWorkshopUser() {
-    given()
+    String token = given()
             .contentType("application/json")
             .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
             .when().post("/auth/login")
             .then()
             .statusCode(200)
             .body("user.username", is("student"))
+            .body("user.displayName", is("Workshop Student"))
             .body("user.role", is("STUDENT"))
             .body("token", notNullValue())
             .body("expiresIn", is(3600))
-            .body("debug", is("authenticated-with-legacy-flow"));
+            .body("debug", is("authenticated-with-legacy-flow"))
+            .extract().path("token");
+
+    JwtTokenService.VerifiedToken claims = tokenService.verify(token);
+    assertEquals("student", claims.username());
+    assertEquals("STUDENT", claims.role());
+    assertEquals(3600, Duration.between(claims.issuedAt(), claims.expiresAt()).getSeconds());
 }
 
 @Test
@@ -128,7 +142,10 @@ void treatsQuoteInUsernameAsLiteralInput() {
 @Test
 void returnsGenericServerErrorWithoutInternalDetails() {
     AuthResource resource = new AuthResource();
-    resource.loginService = new LoginService(new LegacyDatabase(), new LegacyTokenUtil()) {
+    resource.loginService = new LoginService(
+            new LegacyDatabase(),
+            new JwtTokenService("unit-test-secret-for-HS256-signing-and-verification")
+    ) {
         @Override
         public LoginOutcome login(LoginRequest loginRequest) {
             throw new IllegalStateException("simulated-database-detail");
@@ -197,7 +214,9 @@ password vacíos, credenciales no encontradas y construcción del DTO. `LegacyDa
 comprueba la interacción JDBC parametrizada y la migración de contraseña legada;
 `PasswordHasherTest.java` verifica hash con salt, coincidencia y rechazos de
 hash malformado. Estas pruebas son complementarias, no respuestas HTTP de
-endpoint.
+endpoint. `JwtTokenServiceTest.java` comprueba emisión y verificación de
+claims, firma alterada, expiración, claims obligatorios, algoritmo no permitido,
+`iat` futuro, duración máxima, entrada malformada y longitud mínima de clave.
 
 ### Comandos y ejecuciones
 
@@ -205,11 +224,14 @@ Los comandos se ejecutaron con cwd `auth/`, usando Java 21 y Maven del entorno.
 
 | comando | directorio | código de salida | resultado |
 |---|---|---:|---|
-| `mvn '-Dtest=AuthResourceTest,LoginServiceTest' test` | `auth/` | 0 | BUILD SUCCESS; 18 pruebas, 0 fallos, 0 errores. |
-| `mvn verify` | `auth/` | 0 | BUILD SUCCESS; 23 pruebas, 0 fallos, 0 errores; se generó el reporte JaCoCo. |
+| `mvn test` | `auth/` | 0 | Baseline previo: BUILD SUCCESS; 23 pruebas, 0 fallos, 0 errores. |
+| `mvn test` | `auth/` | 0 | Caracterización ampliada del response de login antes del cambio: BUILD SUCCESS; 23 pruebas, 0 fallos, 0 errores. |
+| `mvn test` | `auth/` | 0 | Después de implementar JWT: BUILD SUCCESS; 30 pruebas, 0 fallos, 0 errores. |
+| `mvn verify` | `auth/` | 0 | Verificación final: BUILD SUCCESS; 33 pruebas, 0 fallos, 0 errores; se generó el reporte JaCoCo. |
 
 La última ejecución de `mvn verify` incluyó 13 pruebas de `AuthResourceTest`,
-3 de `LegacyDatabaseTest`, 5 de `LoginServiceTest` y 2 de `PasswordHasherTest`.
+10 de `JwtTokenServiceTest`, 3 de `LegacyDatabaseTest`, 5 de `LoginServiceTest`
+y 2 de `PasswordHasherTest`.
 
 ### Cobertura
 
@@ -220,6 +242,7 @@ endpoints, leída de `auth/target/site/jacoco/jacoco.xml` generado por
 | clase de producción | líneas cubiertas / ejecutables | cobertura |
 |---|---:|---:|
 | `AuthResource` | 12 / 13 | 92.3% |
+| `JwtTokenService` | 42 / 44 | 95.5% |
 | `LoginService` | 23 / 23 | 100% |
 
 El umbral de referencia es 85%; ambas clases lo superan. Reporte HTML:

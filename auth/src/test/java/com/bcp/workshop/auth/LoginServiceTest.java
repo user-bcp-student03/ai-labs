@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class LoginServiceTest {
+    private static final String TEST_SECRET = "unit-test-secret-for-HS256-signing-and-verification";
+
     @Test
     void rejectsNullRequestBeforeAccessingDatabase() {
-        LoginService loginService = new LoginService(new LegacyDatabase(), new LegacyTokenUtil());
+        LoginService loginService = new LoginService(new LegacyDatabase(), new JwtTokenService(TEST_SECRET));
 
         LoginService.LoginOutcome outcome = loginService.login(null);
 
@@ -75,9 +77,7 @@ class LoginServiceTest {
                 return user;
             }
         };
-        LegacyTokenUtil tokenUtil = new LegacyTokenUtil();
-        tokenUtil.secret = "unit-test-secret";
-        return new LoginService(database, tokenUtil);
+        return new LoginService(database, new JwtTokenService(TEST_SECRET));
     }
 
     private LoginRequest requestWithCredentials() {
