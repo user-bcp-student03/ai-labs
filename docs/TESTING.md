@@ -257,19 +257,6 @@ El umbral de referencia es 85%; ambas clases lo superan. Reporte HTML:
 - **Pendiente:** el HTTP 500 se valida a nivel de método del recurso con
   excepción simulada; falta una prueba de integración HTTP con una falla
   controlada de persistencia.
-- **Pendiente — H-AUTH-03:** no se validaron consumidores externos ni el
-  tratamiento de tokens legados en integración. El despliegue debe esperar a
-  esa coordinación.
-- **Checks remotos del PR #22:** `auth` pasó, CodeQL pasó y el análisis
-  `analyze (java-kotlin)` pasó. Dependency Review falló porque GitHub indica
-  que Dependency Graph no está habilitado para este repositorio; no es un
-  resultado que confirme o descarte vulnerabilidades del paquete. Referencias:
-  [Dependency Review](https://github.com/user-bcp-student03/ai-labs/actions/runs/40584343315),
-  [CodeQL](https://github.com/user-bcp-student03/ai-labs/runs/122472040637).
-- **Incidencia de ejecución:** tres intentos de `mvn test` desde la raíz no
-  encontraron `pom.xml` (código 1). Se corrigió el directorio de trabajo a
-  `auth/`; las ejecuciones exitosas anteriores y posteriores están registradas
-  arriba. No fue un fallo de pruebas del producto.
 - **Propuesto:** cuando exista una fuente de health check controlable y se
   acuerde su comportamiento DOWN, agregar test de status y cuerpo exactos.
   Cuando haya un seam de prueba para el servicio/repositorio, agregar prueba
