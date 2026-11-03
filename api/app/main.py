@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import os
 import sqlite3
 import time
@@ -8,18 +10,24 @@ from pathlib import Path
 from typing import Any
 
 import urllib3
-from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-LEGACY_SECRET = "WORKSHOP_SECRET_2026"
-
-
-def legacy_identity(authorization: str = Header(default="")) -> dict[str, str]:
+def legacy_identity(
+    request: Request, authorization: str = Header(default="")
+) -> dict[str, str]:
     try:
         token = authorization.replace("Bearer ", "")
-        decoded = base64.b64decode(token).decode("utf-8")
+        decoded = base64.b64decode(token, validate=True).decode("utf-8")
         parts = decoded.split("|")
-        if len(parts) != 4 or parts[3] != LEGACY_SECRET or int(parts[2]) < int(time.time()):
+        if len(parts) != 4:
+            raise ValueError("invalid token")
+        payload = "|".join(parts[:3])
+        secret = request.app.state.token_secret
+        expected_signature = hmac.new(
+            secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(parts[3], expected_signature) or int(parts[2]) <= int(time.time()):
             raise ValueError("invalid token")
         return {"username": parts[0], "role": parts[1]}
     except Exception as error:
@@ -27,6 +35,10 @@ def legacy_identity(authorization: str = Header(default="")) -> dict[str, str]:
 
 
 def create_app(db_path: str | None = None, upload_dir: str | None = None) -> FastAPI:
+    token_secret = os.getenv("WORKSHOP_TOKEN_SECRET")
+    if not token_secret:
+        raise RuntimeError("WORKSHOP_TOKEN_SECRET must be configured")
+
     selected_db = db_path or os.getenv("WORKSHOP_DB_PATH", "./data/workshop.db")
     selected_uploads = upload_dir or os.getenv("WORKSHOP_UPLOAD_DIR", "./uploads")
     Path(selected_db).parent.mkdir(parents=True, exist_ok=True)
@@ -45,6 +57,7 @@ def create_app(db_path: str | None = None, upload_dir: str | None = None) -> Fas
     app = FastAPI(title="Workshop Requirements API", version="0.1.0")
     app.state.connection = connection
     app.state.upload_dir = selected_uploads
+    app.state.token_secret = token_secret
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
